@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timesheet App</title>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js'></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+        }
+        #app {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header, #user-info {
+            margin-bottom: 20px;
+        }
+        #user-info input, #user-info select {
+            margin-right: 10px;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+        #calendar-container {
+            margin-bottom: 20px;
+        }
+        #activity-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        #activity-table th,
+        #activity-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        #activity-table th {
+            background-color: #f2f2f2;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Timesheet App</h1>
+            <div id="user-info">
+                <input type="text" id="username" placeholder="Username" required>
+                <input type="text" id="role" placeholder="Role" required>
+                <input type="text" id="division" placeholder="Division" required>
+            </div>
+        </header>
+
+        <main>
+            <div id="calendar-container"></div>
+
+            <div id="report-container">
+                <h2>Activity Report</h2>
+                <table id="activity-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Hours</th>
+                            <th>Subsidiaries/Projects</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </main>
+
+        <footer>
+            <button id="export-btn">Export to CSV</button>
+        </footer>
+    </div>
+
+    <div id="activityModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Log Activity for <span id="selected-date"></span></h2>
+            <form id="activity-form">
+                <label for="activity-description">Description:</label>
+                <textarea id="activity-description" required></textarea>
+                
+                <label for="activity-hours">Hours:</label>
+                <input type="number" id="activity-hours" min="0.5" max="24" step="0.5" required>
+                
+                <fieldset>
+                    <legend>Subsidiaries:</legend>
+                    <div id="subsidiaries-checkboxes"></div>
+                </fieldset>
+                
+                <label for="other-project">Other Project:</label>
+                <input type="text" id="other-project">
+                
+                <button type="submit">Submit Activity</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let selectedDate = null;
+        const subsidiaries = ["DOID", "BUMA", "BUMA AU", "BIRU", "BTECH"];
+
+        function initCalendar() {
+            const calendarEl = document.getElementById('calendar-container');
+            const calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                selectable: true,
+                select: function(info) {
+                    selectDate(info.start);
+                },
+                dateClick: function(info) {
+                    selectDate(info.date);
+                },
+                validRange: function(nowDate) {
+                    return {
+                        start: new Date(nowDate.getFullYear(), nowDate.getMonth() - 1, nowDate.getDate()),
+                        end: nowDate
+                    };
+                }
+            });
+            calendar.render();
+        }
+
+        function selectDate(date) {
+            const today = new Date();
+            const oneMonthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+            
+            if (date > today || date < oneMonthAgo) {
+                alert("Please select a date within the last month.");
+                return;
+            }
+            
+            selectedDate = date;
+            document.getElementById('selected-date').textContent = date.toDateString();
+            openModal();
+        }
+
+        function initActivityForm() {
+            const subsidiariesContainer = document.getElementById('subsidiaries-checkboxes');
+            subsidiaries.forEach(sub => {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `sub-${sub}`;
+                checkbox.name = 'subsidiaries';
+                checkbox.value = sub;
+
+                const label = document.createElement('label');
+                label.htmlFor = `sub-${sub}`;
+                label.textContent = sub;
+
+                subsidiariesContainer.appendChild(checkbox);
+                subsidiariesContainer.appendChild(label);
+            });
+
+            document.getElementById('activity-form').addEventListener('submit', submitActivity);
+        }
+
+        function submitActivity(event) {
+            event.preventDefault();
+            const activity = {
+                date: selectedDate,
+                description: document.getElementById('activity-description').value,
+                hours: parseFloat(document.getElementById('activity-hours').value),
+                subsidiaries: Array.from(document.querySelectorAll('input[name="subsidiaries"]:checked')).map(el => el.value),
+                otherProject: document.getElementById('other-project').value
+            };
+            saveActivity(activity);
+            updateReport();
+            event.target.reset();
+            closeModal();
+        }
+
+        function saveActivity(activity) {
+            const activities = JSON.parse(localStorage.getItem('activities') || '[]');
+            activities.push(activity);
+            localStorage.setItem('activities', JSON.stringify(activities));
+        }
+
+        function getActivities() {
+            return JSON.parse(localStorage.getItem('activities') || '[]');
+        }
+
+        function updateReport() {
+            const activities = getActivities();
+            const tableBody = document.querySelector('#activity-table tbody');
+            tableBody.innerHTML = '';
+            activities.forEach(activity => {
+                const row = tableBody.insertRow();
+                row.insertCell().textContent = new Date(activity.date).toDateString();
+                row.insertCell().textContent = activity.description;
+                row.insertCell().textContent = activity.hours;
+                row.insertCell().textContent = [...activity.subsidiaries, activity.otherProject].filter(Boolean).join(', ');
+            });
+        }
+
+        function exportToCSV() {
+            const activities = getActivities();
+            const username = document.getElementById('username').value;
+            const role = document.getElementById('role').value;
+            const division = document.getElementById('division').value;
+            
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += `Username: ${username}\nRole: ${role}\nDivision: ${division}\n\n`;
+            csvContent += "Date,Description,Hours,Subsidiaries/Projects\n";
+            activities.forEach(activity => {
+                const row = [
+                    new Date(activity.date).toDateString(),
+                    activity.description,
+                    activity.hours,
+                    [...activity.subsidiaries, activity.otherProject].filter(Boolean).join('; ')
+                ];
+                csvContent += row.join(",") + "\n";
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "timesheet_export.csv");
+            document.body.appendChild(link);
+            link.click();
+        }
+
+        function openModal() {
+            document.getElementById('activityModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('activityModal').style.display = 'none';
+        }
+
+        function initApp() {
+            initCalendar();
+            initActivityForm();
+            updateReport();
+            document.getElementById('export-btn').addEventListener('click', exportToCSV);
+            
+            // Close modal when clicking on <span> (x)
+            document.querySelector('.close').onclick = closeModal;
+
+            // Close modal when clicking outside of it
+            window.onclick = function(event) {
+                if (event.target == document.getElementById('activityModal')) {
+                    closeModal();
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
